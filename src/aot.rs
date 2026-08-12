@@ -6,7 +6,6 @@ use crate::mir::*;
 use crate::hir::Type;
 use std::fs::File;
 use std::io::Write;
-use target_lexicon::triple;
 
 pub struct AOTCompiler {
     builder_context: FunctionBuilderContext,
@@ -157,7 +156,11 @@ impl AOTCompiler {
                                     builder.def_var(dest_var, val);
                                 }
                                 Rvalue::AddressOf(_) | Rvalue::MutAddressOf(_) | Rvalue::Dereference(_) => {
-                                    unimplemented!("Pointer operations lowering to Cranelift backend");
+                                    // Borrow/pointer desteği henüz implemente edilmedi (stack-slot promotion
+                                    // gerekir). Kaba panik yerine anlamlı derleyici hatası.
+                                    return Err(format!(
+                                        "Compile error: borrow/pointer (AddressOf/Deref) not implemented yet"
+                                    ));
                                 }
                             }
                         }
@@ -167,9 +170,37 @@ impl AOTCompiler {
                             let val = compile_operand(&mut builder, op);
                             builder.ins().store(cranelift::prelude::MemFlags::new(), val, ptr_val, *offset as i32);
                         }
-                        Statement::Assert(cond, _) => {
+                        Statement::Assert(cond, msg) => {
+                            // cond == 0 ise fail runtime fonksiyonunu çağır (runtime.c'de, mesaj basar + exit).
+                            // Eski `trapz` SIGILL üretiyordu ve mesaj basmıyordu.
                             let cond_val = compile_operand(&mut builder, cond);
-                            builder.ins().trapz(cond_val, cranelift::prelude::TrapCode::User(1));
+
+                            // Mesajı C-string olarak heap'e kaçır
+                            let mut c_msg = msg.clone();
+                            c_msg.push('\0');
+                            let leaked: &'static str = Box::leak(c_msg.into_boxed_str());
+                            let msg_ptr = leaked.as_ptr() as i64;
+
+                            let fail_block = builder.create_block();
+                            let cont_block = builder.create_block();
+                            let cond_z = builder.ins().icmp_imm(IntCC::Equal, cond_val, 0);
+                            builder.ins().brif(cond_z, fail_block, &[], cont_block, &[]);
+
+                            builder.switch_to_block(fail_block);
+                            let mut sig = self.module.make_signature();
+                            sig.params.push(AbiParam::new(types::I64));
+                            let fn_id = self
+                                .module
+                                .declare_function("__demir_assert_fail", Linkage::Import, &sig)
+                                .unwrap();
+                            let lf = self.module.declare_func_in_func(fn_id, builder.func);
+                            let arg = builder.ins().iconst(types::I64, msg_ptr);
+                            builder.ins().call(lf, &[arg]);
+                            builder.ins().jump(cont_block, &[]);
+                            builder.seal_block(fail_block);
+
+                            builder.switch_to_block(cont_block);
+                            builder.seal_block(cont_block);
                         }
                     }
                 }
@@ -276,7 +307,7 @@ impl AOTCompiler {
 fn compile_operand(builder: &mut FunctionBuilder, op: &Operand) -> Value {
     match op {
         Operand::ConstantInt(v) => builder.ins().iconst(types::I64, *v),
-        Operand::ConstantString(s) => {
+        Operand::ConstantString(_s) => {
             // For AOT, constant strings need to be placed in data section. 
             // For simplicity, we just use 0 here, or we need to define data in module.
             // But let's leave it as 0 to avoid crash if they use it. 

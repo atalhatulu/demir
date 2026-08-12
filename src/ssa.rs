@@ -210,7 +210,7 @@ pub fn place_phi_nodes(mir_func: &mut MirFunction, analyzer: &SsaAnalyzer) {
 }
 
 pub fn build_ssa(mir_func: &mut MirFunction) {
-    let mut analyzer = SsaAnalyzer::new(mir_func);
+    let analyzer = SsaAnalyzer::new(mir_func);
     if analyzer.cfg.num_blocks == 0 { return; }
     
     place_phi_nodes(mir_func, &analyzer);

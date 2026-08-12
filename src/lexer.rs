@@ -3,7 +3,6 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 pub struct Lexer<'a> {
-    source: &'a str,
     chars: Peekable<Chars<'a>>,
     line: usize,
     column: usize,
@@ -12,7 +11,6 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            source,
             chars: source.chars().peekable(),
             line: 1,
             column: 1,
@@ -182,6 +180,44 @@ impl<'a> Lexer<'a> {
                         TokenType::Or
                     } else {
                         TokenType::Error("Expected '||'".to_string())
+                    }
+                }
+                '\'' => {
+                    // Karakter literal: 'a' veya '\n' gibi tek karakter + escape
+                    let char_val = match self.peek() {
+                        Some(&'\\') => {
+                            self.advance(); // consume backslash
+                            match self.advance() {
+                                Some('n') => '\n',
+                                Some('t') => '\t',
+                                Some('r') => '\r',
+                                Some('\\') => '\\',
+                                Some('\'') => '\'',
+                                Some('\0') => '\0',
+                                Some(c) => c,
+                                None => {
+                                    return Token {
+                                        kind: TokenType::Error("unterminated char literal".to_string()),
+                                        span: Span { start_line: self.line, start_col: self.column, end_line: self.line, end_col: self.column },
+                                    };
+                                }
+                            }
+                        }
+                        Some(&c) => {
+                            self.advance();
+                            c
+                        }
+                        None => {
+                            return Token {
+                                kind: TokenType::Error("unterminated char literal".to_string()),
+                                span: Span { start_line: self.line, start_col: self.column, end_line: self.line, end_col: self.column },
+                            };
+                        }
+                    };
+                    // Kapanış tırnağını doğrula
+                    match self.advance() {
+                        Some('\'') => TokenType::CharLiteral(char_val),
+                        _ => TokenType::Error("unterminated char literal".to_string()),
                     }
                 }
                 '"' => {

@@ -19,6 +19,14 @@ unsafe extern "C" fn std_io_print_str(ptr: i64) {
     std::io::stdout().flush().unwrap();
 }
 
+// Contract assert'i ihlal edildiğinde anlamlı mesaj basar ve temiz çıkış yapar.
+// Eski davranış (`trapz`) Cranelift'ta SIGILL (Illegal instruction) üretiyordu.
+unsafe extern "C" fn __demir_assert_fail(ptr: i64) -> ! {
+    let c_str = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char);
+    eprintln!("ASSERT FAILED: {}", c_str.to_str().unwrap_or("<invalid>"));
+    std::process::exit(1);
+}
+
 pub struct JITCompiler {
     builder_context: FunctionBuilderContext,
     ctx: codegen::Context,
@@ -32,6 +40,7 @@ impl JITCompiler {
         // Host fonksiyonumuzu JIT Engine'e sembol olarak kaydediyoruz
         builder.symbol("std_io_print", std_io_print as *const u8);
         builder.symbol("std_io_print_str", std_io_print_str as *const u8);
+        builder.symbol("__demir_assert_fail", __demir_assert_fail as *const u8);
 
         let module = JITModule::new(builder);
         
@@ -151,7 +160,11 @@ impl JITCompiler {
                                     builder.def_var(dest_var, val);
                                 }
                                 Rvalue::AddressOf(_) | Rvalue::MutAddressOf(_) | Rvalue::Dereference(_) => {
-                                    unimplemented!("Pointer operations lowering to Cranelift backend");
+                                    // Borrow/pointer desteği henüz implemente edilmedi (stack-slot promotion
+                                    // gerekir). Kaba panik yerine anlamlı derleyici hatası.
+                                    return Err(format!(
+                                        "Compile error: borrow/pointer (AddressOf/Deref) not implemented yet"
+                                    ));
                                 }
                             }
                         }
@@ -161,9 +174,41 @@ impl JITCompiler {
                             let val = compile_operand(&mut builder, op);
                             builder.ins().store(cranelift::prelude::MemFlags::new(), val, ptr_val, *offset as i32);
                         }
-                        Statement::Assert(cond, _) => {
+                        Statement::Assert(cond, msg) => {
+                            // cond == 0 ise fail runtime fonksiyonunu çağır (mesaj basar + exit).
+                            // Eski `trapz` SIGILL üretiyordu ve mesaj basmıyordu.
                             let cond_val = compile_operand(&mut builder, cond);
-                            builder.ins().trapz(cond_val, cranelift::prelude::TrapCode::User(1));
+
+                            // Mesajı C-string olarak heap'e kaçır (AOT kaynağında da aynı desen)
+                            let mut c_msg = msg.clone();
+                            c_msg.push('\0');
+                            let leaked: &'static str = Box::leak(c_msg.into_boxed_str());
+                            let msg_ptr = leaked.as_ptr() as i64;
+
+                            let fail_block = builder.create_block();
+                            let cont_block = builder.create_block();
+                            // cond == 0 iken fail'e git
+                            let cond_z = builder.ins().icmp_imm(IntCC::Equal, cond_val, 0);
+                            builder.ins().brif(cond_z, fail_block, &[], cont_block, &[]);
+
+                            // fail block: __demir_assert_fail(msg_ptr) çağır (geri dönmez, exit eder)
+                            builder.switch_to_block(fail_block);
+                            let mut sig = self.module.make_signature();
+                            sig.params.push(AbiParam::new(types::I64));
+                            let fn_id = self
+                                .module
+                                .declare_function("__demir_assert_fail", Linkage::Import, &sig)
+                                .unwrap();
+                            let lf = self.module.declare_func_in_func(fn_id, builder.func);
+                            let arg = builder.ins().iconst(types::I64, msg_ptr);
+                            builder.ins().call(lf, &[arg]);
+                            // __demir_assert_fail -> ! döndürür; yine de konta fallback sağla
+                            builder.ins().jump(cont_block, &[]);
+                            builder.seal_block(fail_block);
+
+                            // devam block'u
+                            builder.switch_to_block(cont_block);
+                            builder.seal_block(cont_block);
                         }
                     }
                 }
@@ -259,7 +304,11 @@ impl JITCompiler {
 
         self.module.finalize_definitions().unwrap();
         
-        let main_id = func_ids["main"];
+        // 'main' giriş noktası yoksa derleyici hatası ver (HashMap panik yerine)
+        let main_id = match func_ids.get("main") {
+            Some(id) => *id,
+            None => return Err("Compile error: entry point 'main' not found".to_string()),
+        };
         let code_ptr = self.module.get_finalized_function(main_id);
         
         println!("DEBUG: code_ptr obtained, transmuting...");

@@ -19,7 +19,7 @@ use parser::Parser;
 use analyzer::Analyzer;
 use mir_builder::MirBuilder;
 use borrowck::BorrowChecker;
-use ssa::{SsaAnalyzer, place_phi_nodes};
+use ssa::SsaAnalyzer;
 use hir::HirStatement;
 use codegen::JITCompiler;
 
@@ -105,7 +105,7 @@ fn main() {
                 let mut mir_funcs = Vec::new();
                 for stmt in hir.statements {
                     if let HirStatement::FunctionDeclaration { ref name, ref params, .. } = stmt {
-                        let mut mir_builder = MirBuilder::new(name.clone(), params.len(), &analyzer.structs);
+                        let mir_builder = MirBuilder::new(name.clone(), params.len(), &analyzer.structs);
                         match mir_builder.build(stmt.clone()) {
                             Ok(mut mir_func) => {
                                 let mut borrow_checker = BorrowChecker::new();
@@ -149,7 +149,7 @@ fn main() {
                 }
 
                 println!("\n--- M14: AOT COMPILATION ---");
-                let mut aot = aot::AOTCompiler::new();
+                let aot = aot::AOTCompiler::new();
                 let obj_path = "output.o";
                 match aot.compile_and_write_object(&mir_funcs, obj_path) {
                     Ok(_) => {

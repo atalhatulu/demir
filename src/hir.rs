@@ -1,3 +1,9 @@
+// HIR, ilerideki tip sistemi (Struct/Trait) ve AI-first özelliklerin (Agent/Intent)
+// iskelesi olarak kullanılacak alanlar içerir. Henüz uçtan uca tüketilmeyen alanlar
+// bilinçli olarak korunur — silmek mimari iskeleyi bozar. Bu yüzden dead-code uyarıları
+// bastırılır.
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,

@@ -1,0 +1,11 @@
+fn main() {
+    var x: Int = 10;
+
+    if x > 5 {
+        x = 20;
+    } else {
+        x = 30;
+    }
+
+    std.io.print(x);
+}

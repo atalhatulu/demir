@@ -1,0 +1,10 @@
+fn main() {
+    var a: Int = 10;
+    let b: Int = 20;
+    
+    if a < b {
+        std.io.print(1);
+    } else {
+        std.io.print(0);
+    }
+}

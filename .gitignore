@@ -1,0 +1,16 @@
+# Rust build artifacts
+/target/
+
+# Compiled output
+/output
+/output.o
+*.o
+*.out
+
+# Logs
+*.log
+out.log
+
+# Editor
+*.swp
+*~

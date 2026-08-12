@@ -1,0 +1,10 @@
+fn main() {
+    var x: Int = 10;
+    
+    // Creating references
+    var r1: &Int = &x;
+    var r2: &mut Int = &mut x;
+    
+    // Dereferencing
+    var val: Int = *r1;
+}

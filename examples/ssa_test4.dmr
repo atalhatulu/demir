@@ -1,0 +1,10 @@
+struct Point {
+    x: Int,
+    y: Int
+}
+
+fn main() {
+    var p1: Point = Point { x: 10, y: 20 };
+    var px: Int = p1.x; // Struct Member Access will fail at HIR, but let's test struct instantiation.
+    std.io.print(px);
+}

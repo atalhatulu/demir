@@ -1,0 +1,7 @@
+fn print_str(s: String) {}
+
+fn main() {
+    var a: String = "hello";
+    print_str(a);
+    print_str(a);
+}

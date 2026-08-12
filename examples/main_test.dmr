@@ -1,0 +1,6 @@
+import "math";
+
+fn main() {
+    var x: Int = add(10, 5);
+    std.io.print(x);
+}

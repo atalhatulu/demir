@@ -1,0 +1,4 @@
+fn main() {
+    std.io.print("Hello, World!");
+    std.io.print("This is the V0.1 Compiler running native strings!");
+}

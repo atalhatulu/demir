@@ -1,0 +1,11 @@
+fn divide(a: Int, b: Int) -> Int 
+    requires b != 0
+    ensures true
+{
+    return a / b;
+}
+
+fn main() {
+    // 0 is passed, so pre-condition should fail!
+    var x: Int = divide(10, 0);
+}

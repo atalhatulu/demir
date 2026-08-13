@@ -76,6 +76,13 @@ pub struct MirFunction {
     pub param_count: usize,
     pub locals: Vec<LocalDecl>,
     pub blocks: Vec<BasicBlock>,
+    /// Maps every SSA-renamed local id back to its pre-SSA original local id.
+    /// SSA renumbers locals (x5 -> x20001); `locals` keeps the original decls at
+    /// their indices and new decls are appended, so `locals.get(renamed_id)` by
+    /// id is not reliable. Type or ownership queries on a renamed local (needed
+    /// for bounds checks, borrow lowering, future codegen features) must resolve
+    /// through `ssa_origin` to find the original decl. Populated by ssa.rs.
+    pub ssa_origin: std::collections::HashMap<LocalId, LocalId>,
 }
 
 impl MirFunction {
@@ -85,6 +92,7 @@ impl MirFunction {
             param_count,
             locals: Vec::new(),
             blocks: Vec::new(),
+            ssa_origin: std::collections::HashMap::new(),
         }
     }
 
@@ -135,6 +143,12 @@ impl fmt::Display for Rvalue {
 impl fmt::Display for MirFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "fn {}({}) {{", self.name, self.param_count)?;
+        if !self.ssa_origin.is_empty() {
+            let mut o: Vec<_> = self.ssa_origin.iter().collect();
+            o.sort_by_key(|(k, _)| k.0);
+            let entries: Vec<String> = o.iter().map(|(k, v)| format!("{}<-{}", k.0, v.0)).collect();
+            writeln!(f, "  ssa_origin: {}", entries.join(" "))?;
+        }
         for (i, block) in self.blocks.iter().enumerate() {
             writeln!(f, "bb{}:", i)?;
             for phi in &block.phi_nodes {

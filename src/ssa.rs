@@ -229,7 +229,8 @@ fn rename_variables(mir_func: &mut MirFunction, analyzer: &SsaAnalyzer) {
     }
 
     let mut new_decls = Vec::new();
-    
+    let mut ssa_origin = std::collections::HashMap::new();
+
     rename_block(
         BasicBlockId(0),
         mir_func,
@@ -237,10 +238,12 @@ fn rename_variables(mir_func: &mut MirFunction, analyzer: &SsaAnalyzer) {
         &mut stacks,
         &mut next_id,
         &orig_locals,
-        &mut new_decls
+        &mut new_decls,
+        &mut ssa_origin,
     );
 
     mir_func.locals.extend(new_decls);
+    mir_func.ssa_origin = ssa_origin;
 }
 
 fn rename_operand(op: &mut Operand, stacks: &HashMap<LocalId, Vec<LocalId>>) {
@@ -264,6 +267,7 @@ fn rename_block(
     next_id: &mut usize,
     orig_locals: &HashMap<LocalId, LocalDecl>,
     new_decls: &mut Vec<LocalDecl>,
+    ssa_origin: &mut std::collections::HashMap<LocalId, LocalId>,
 ) {
     let mut pushed_versions = Vec::new();
 
@@ -271,7 +275,8 @@ fn rename_block(
         let orig_dest = mir_func.blocks[b.0].phi_nodes[i].dest;
         let new_id = LocalId(*next_id);
         *next_id += 1;
-        
+        ssa_origin.insert(new_id, orig_dest);
+
         stacks.entry(orig_dest).or_insert(vec![]).push(new_id);
         pushed_versions.push(orig_dest);
         mir_func.blocks[b.0].phi_nodes[i].dest = new_id;
@@ -305,7 +310,8 @@ fn rename_block(
                 let orig_dest = *dest;
                 let new_id = LocalId(*next_id);
                 *next_id += 1;
-                
+                ssa_origin.insert(new_id, orig_dest);
+
                 stacks.entry(orig_dest).or_insert(vec![]).push(new_id);
                 pushed_versions.push(orig_dest);
                 *dest = new_id;
@@ -340,7 +346,8 @@ fn rename_block(
                 let orig_dest = *destination;
                 let new_id = LocalId(*next_id);
                 *next_id += 1;
-                
+                ssa_origin.insert(new_id, orig_dest);
+
                 stacks.entry(orig_dest).or_insert(vec![]).push(new_id);
                 pushed_versions.push(orig_dest);
                 *destination = new_id;
@@ -371,7 +378,7 @@ fn rename_block(
 
     let children = analyzer.dom_tree[b.0].clone();
     for child in children {
-        rename_block(child, mir_func, analyzer, stacks, next_id, orig_locals, new_decls);
+        rename_block(child, mir_func, analyzer, stacks, next_id, orig_locals, new_decls, ssa_origin);
     }
 
     for orig_dest in pushed_versions.iter().rev() {

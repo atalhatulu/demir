@@ -208,7 +208,7 @@ impl<'a> MirBuilder<'a> {
                 Ok(Rvalue::BinaryOp(operator, lhs, rhs))
             }
             HirExpression::Call { callee, arguments, ty } => {
-                let dest = self.new_temp(ty);
+                let dest = self.new_temp(ty.clone());
                 let target_bb = self.new_block();
                 
                 let callee_name = match *callee {
@@ -229,6 +229,37 @@ impl<'a> MirBuilder<'a> {
                 });
                 
                 self.current_block = target_bb;
+
+                // Struct-return value-copy: a callee puts the struct on ITS OWN stack
+                // frame and only returns the (I64) pointer. If the callee frame is
+                // popped before the caller loads it again, the pointer dangles. To give
+                // the caller a stable copy, immediately after the call we re-allocate
+                // the struct in the CALLER's frame and copy the payload field-by-field.
+                // This is the escape-safety fix for `fn make() -> Point` style returns.
+                if let Type::Struct(struct_name) = &ty {
+                    if let Some(fields) = self.structs.get(struct_name) {
+                        let size = fields.len() * 8;
+                        let caller_slot = self.new_temp(ty.clone());
+                        self.push_stmt(Statement::Assign(caller_slot, Rvalue::StructAlloc(size)));
+                        for (idx, _field) in fields.iter().enumerate() {
+                            let off = idx * 8;
+                            // load callee portion into a temp, then store into caller slot
+                            let val_tmp = self.new_temp(Type::Int);
+                            self.push_stmt(Statement::Assign(
+                                val_tmp,
+                                Rvalue::FieldLoad(LocalId(dest.0), off),
+                            ));
+                            self.push_stmt(Statement::Store(
+                                caller_slot,
+                                off,
+                                Operand::Copy(val_tmp),
+                            ));
+                        }
+                        // 'p' now refers to the caller-owned copy
+                        return Ok(Rvalue::Use(Operand::Copy(caller_slot)));
+                    }
+                }
+
                 Ok(Rvalue::Use(Operand::Copy(dest)))
             }
             HirExpression::StructInstantiation { name, fields, .. } => {
@@ -267,8 +298,23 @@ impl<'a> MirBuilder<'a> {
                 let obj_ty = object.ty();
                 let mut offset = 0;
                 
-                if let Type::Struct(struct_name) = obj_ty {
-                    if let Some(struct_fields) = self.structs.get(struct_name) {
+                // Resolve the underlying struct type, unwrapping reference wrappers
+                // (`&Pair` / `&mut Pair`) so field offsets are computed correctly
+                // when accessing members through a struct reference parameter.
+                let resolved = match obj_ty {
+                    Type::Struct(s) => Some(s.clone()),
+                    Type::Ref(inner) => match &**inner {
+                        Type::Struct(s) => Some(s.clone()),
+                        _ => None,
+                    },
+                    Type::MutRef(inner) => match &**inner {
+                        Type::Struct(s) => Some(s.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(struct_name) = resolved {
+                    if let Some(struct_fields) = self.structs.get(&struct_name) {
                         for sf in struct_fields {
                             if sf.name == *member {
                                 break;

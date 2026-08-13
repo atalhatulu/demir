@@ -1,0 +1,15 @@
+// fib(n) computed with a plain while loop + Int arithmetic (no arrays yet).
+// JIT and AOT both print 55 for fib(10). Kept in main because assignment in
+// a function body is a separate pre-existing parser bug (see notes).
+fn main() {
+    var a: Int = 0;
+    var b: Int = 1;
+    var i: Int = 0;
+    while i < 10 {
+        var tmp: Int = a + b;
+        a = b;
+        b = tmp;
+        i = i + 1;
+    }
+    std.io.print(a);
+}

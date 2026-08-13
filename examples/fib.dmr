@@ -1,15 +1,21 @@
 // fib(n) computed with a plain while loop + Int arithmetic (no arrays yet).
-// JIT and AOT both print 55 for fib(10). Kept in main because assignment in
-// a function body is a separate pre-existing parser bug (see notes).
-fn main() {
+// JIT and AOT both print 55 for fib(10). Uses a function body with a loop
+// whose condition references a parameter (the parser previously misread
+// `while i < n {` as a struct literal; fixed via known_structs guard).
+fn fib(n: Int) -> Int {
     var a: Int = 0;
     var b: Int = 1;
     var i: Int = 0;
-    while i < 10 {
+    while i < n {
         var tmp: Int = a + b;
         a = b;
         b = tmp;
         i = i + 1;
     }
-    std.io.print(a);
+    return a;
+}
+
+fn main() {
+    var f: Int = fib(10);
+    std.io.print(f);
 }

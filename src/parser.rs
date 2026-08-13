@@ -6,13 +6,23 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     current: Token,
     peek: Token,
+    /// Names of structs declared so far. Used to disambiguate `Identifier { ... }`:
+    /// a struct literal only starts with an identifier that is a known struct name,
+    /// so a `while i < n {` block body (where the condition operand is a plain
+    /// identifier) is not misread as a struct instantiation.
+    known_structs: std::collections::HashSet<String>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(mut lexer: Lexer<'a>) -> Self {
         let current = lexer.next_token();
         let peek = lexer.next_token();
-        Self { lexer, current, peek }
+        Self {
+            lexer,
+            current,
+            peek,
+            known_structs: std::collections::HashSet::new(),
+        }
     }
 
     fn advance(&mut self) {
@@ -176,6 +186,7 @@ impl<'a> Parser<'a> {
             _ => return Err("Expected struct name".to_string()),
         };
         self.advance();
+        self.known_structs.insert(name.clone());
 
         self.expect(TokenType::OpenBrace)?;
         let mut fields = Vec::new();
@@ -473,8 +484,12 @@ impl<'a> Parser<'a> {
                     Ok(Expression::Boolean(false))
                 } else {
                     self.advance();
-                    // Check if it's a struct instantiation: Identifier { ... }
-                    if self.match_token(TokenType::OpenBrace) {
+                    // Struct instantiation only if this identifier is a known struct name.
+                    // Otherwise `Identifier {` is most likely the start of an if/while
+                    // block body following an identifier operand (e.g. `while i < n {`),
+                    // not a struct literal — without this guard that body brace is
+                    // misparsed as a struct field list and everything breaks.
+                    if self.known_structs.contains(&val) && self.match_token(TokenType::OpenBrace) {
                         let mut fields = Vec::new();
                         while !self.check(&TokenType::CloseBrace) && !self.check(&TokenType::Eof) {
                             let field_name = match &self.current.kind {

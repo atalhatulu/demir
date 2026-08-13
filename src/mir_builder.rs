@@ -329,6 +329,13 @@ impl<'a> MirBuilder<'a> {
                 Ok(Rvalue::Use(Operand::Copy(dest)))
             }
             HirExpression::Borrow(inner, ty) => {
+                // Not yet supported: borrowing a whole struct. Stack-slot promotion binds the
+                // address of the struct-pointer's own slot, not the struct payload, so any
+                // field read through the resulting &struct yields garbage (see &struct-param
+                // investigation). Fail loudly at codegen time rather than emitting wrong data.
+                if matches!(inner.ty(), Type::Struct(_)) {
+                    return Err("Compile error: borrowing a whole struct is not supported yet; borrow fields individually".to_string());
+                }
                 let op = self.build_operand(*inner)?;
                 let local = match op {
                     Operand::Copy(l) | Operand::Move(l) => l,

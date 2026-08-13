@@ -22,9 +22,10 @@ LLVM'in ağır derleme sürelerinden kaçınmak ve JIT entegrasyonunu sağlamak 
 - [x] Temel AST -> Cranelift bağlaması (Bağlandı)
 - [x] JIT Execution ile script çalıştırma
 - [x] Değişken (let/var), Atama, Aritmetik, Block ve If desteği
-- [x] Borrow Checker mimarisi kurulumu
+- [x] Borrow Checker mimarisi kurulumu (ownership/move takibi + stack-slot tabanlı `&`/`&mut`/`*` pointer codegen)
+- [x] Design-by-contract (`requires`/`ensures`) runtime kontrolü (ASSERT FAILED + exit 1)
 - [x] Cranelift Object generation (AOT) ve native binary
 - [ ] Gelişmiş Type System (Structs, Trait/Interface benzeri)
-- [ ] AI-first sentaks kuralları (Agent, Intent)
+- [ ] AI-first sentaks kuralları (Agent, Intent) — V0.3+ araştırma
 - [ ] LLM Native Bindings (İleri aşama)
-- [ ] Hafıza modeli (Memory allocation via manual/arena - TBD)
+- [ ] Hafıza modeli (Memory allocation: arena/region-based — önerilen)

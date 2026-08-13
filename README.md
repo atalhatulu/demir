@@ -14,6 +14,7 @@ Existing languages already solve many individual problems extremely well. Demir 
 
 - Compile-time memory safety
 - Ownership and borrowing
+- **Design by contract** (`requires` / `ensures`), enforced at runtime today, compile-time proving planned
 - Explicit mutability
 - Predictable semantics
 - Native performance
@@ -44,6 +45,26 @@ Output:
 ```
 
 Demir syntax is designed for **semantic clarity and low cognitive overhead**, rather than trying to imitate natural language.
+
+### Design by contract (working today)
+
+Functions can declare **pre-conditions** (`requires`) and **post-conditions** (`ensures`). Pre-conditions are emitted as runtime checks and fail fast with a clear message and a non-zero exit status if violated.
+
+```demir
+fn divide(a: Int, b: Int) -> Int
+    requires b != 0
+{
+    return a / b;
+}
+```
+
+Calling `divide(10, 0)` verifies the `requires b != 0` pre-condition at runtime and aborts:
+
+```text
+ASSERT FAILED: pre-condition 1 failed
+```
+
+This is checked in both JIT and AOT paths. Compile-time verification (statically proving a contract holds) is a future research direction.
 
 ---
 
@@ -92,16 +113,19 @@ Established foundations:
 - [x] Variables and assignment
 - [x] Arithmetic expressions
 - [x] Blocks and conditionals
-- [x] Borrow checker foundation
+- [x] Borrow checker foundation (ownership/move tracking + stack-slot based `&`/`&mut`/`*` pointer codegen)
 - [x] Cranelift integration
 - [x] Native object generation
 - [x] Native executable generation
 
 In development:
 
+- [x] Design by contract (`requires` / `ensures`) — runtime enforcement
+- [x] Pointer / reference codegen (`&`, `&mut`, `*`) — stack-slot based
 - [ ] Advanced type system
 - [ ] Ownership / borrowing completion
 - [ ] Lifetimes
+- [ ] Memory model (arena / region-based — proposed)
 - [ ] Generics and monomorphization
 - [ ] Traits / interfaces
 - [ ] Module system
@@ -166,6 +190,7 @@ Complete the path from `.dmr` source to a correct native executable on **x86-64 
 
 ### V0.3+
 
+- **Memory model: arena / region-based** (proposed) — region-based allocation with scoped lifetimes, chosen over a general heap GC to keep semantics deterministic and predictable
 - Advanced compiler tooling
 - Ownership / data-flow visualization
 - Concurrency models
@@ -186,11 +211,11 @@ Demir compiler written in Demir
 
 ---
 
-## AI Direction
+## Research Direction (AI, future / V0.3+)
 
-AI is a **future capability**, not a requirement for executing Demir programs.
+AI integration is **future research**, not a requirement for executing Demir programs. Today's compiler has only lexical groundwork (keywords such as `intent`, `agent`, `capability`, `ask`); there is **no AI runtime, no natural-language parsing, and no AI-first architecture** in the current compiler. This section describes where we would like to go, not what exists today.
 
-Potential areas include:
+Potential future research areas:
 
 - Agent-oriented programming
 - Intent-aware compilation

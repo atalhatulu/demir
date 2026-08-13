@@ -1,5 +1,7 @@
 # Language Vision: AI-First System Programming Language
 
+> **Status: Research & Vision.** The "AI-first" framing is a long-term design goal (V0.3+ / V1+ / V2+), **not** an implemented capability. Today only the lexer recognizes AI keywords (`intent`, `agent`, `capability`, `ask`); there is no AI runtime or AI-first architecture in the current compiler. The only working piece of the roadmap below is design-by-contract (`requires`/`ensures`), which is enforced at runtime in V0.1.
+
 ## 1. Core Philosophy
 The programming language developed in this project aims to create a hybrid that brings together:
 - Low-level control of C
@@ -26,6 +28,7 @@ While human readability is important, we do not compromise compiler semantics or
 *Status: Active / Implementation*
 - Rust bootstrap compiler (`rustc`).
 - Traditional procedural semantics (`fn main()`, primitive types, `if/while`).
+- Design by contract (`requires` / `ensures`) enforced at runtime (pre-conditions, post-conditions).
 - Advanced internal representation: AST -> HIR -> MIR -> CFG -> Strict SSA.
 - Native code generation via Cranelift.
 - JIT / AOT (ELF executable) compilation.
@@ -37,10 +40,10 @@ While human readability is important, we do not compromise compiler semantics or
 - Advanced primitive and compound types (Structs/Enums).
 - Provenance/Data Lineage tracking metadata at the SSA level.
 
-### V1+ / V2+ - AI-First Paradigms
+### V1+ / V2+ - AI-First Paradigms and Compile-Time Proofs
 *Status: Research & Future Implementation*
 - Capabilities and Agent-Oriented Programming (AOP).
 - Intent-Oriented structures natively recognized by the compiler.
-- Contract-Oriented constraints (requires, ensures, invariant).
+- Static verification of contracts (`invariant`, compile-time proving of `requires`/`ensures`).
 - Hardware-specific backends (GPU/NPU) and Typed AI Computations (Tensors, Probability).
 - Self-hosted compiler.

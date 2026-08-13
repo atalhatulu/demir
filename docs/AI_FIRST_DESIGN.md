@@ -1,9 +1,12 @@
 # AI-First Design Principles
 
-## Overview
-This language is engineered as an **AI-First System Programming Language**. However, this does not mean it uses natural language (e.g., English sentences) as syntax. 
+> **Status: Research & Vision (V0.3+).** AI-first is **not** an implemented capability of the current compiler.
+> Today's compiler contains only lexical groundwork — keywords (`intent`, `agent`, `capability`, `ask`) — but **no AI runtime, no natural-language parsing, and no AI-first architecture**. This document describes the intended design direction, not current behavior.
 
-Instead, it provides an environment where **AI models can predictably generate structurally sound, deterministic, and verifiable code**, while the compiler strictly enforces system-level safety and generates native AOT binaries.
+## Overview
+The long-term vision is a language engineered as an **AI-First System Programming Language**. This does not mean it uses natural language (e.g., English sentences) as syntax.
+
+Instead, the intended design provides an environment where **AI models can predictably generate structurally sound, deterministic, and verifiable code**, while the compiler strictly enforces system-level safety and generates native AOT binaries.
 
 ## 1. Intent vs Implementation
 - **AI generates intent:** The LLM maps human requests into strict language abstractions (Capabilities, Intents, Contracts).
@@ -18,7 +21,10 @@ When choosing syntax and structural rules, the language strictly adheres to the 
 5. **Native Performance:** Zero-cost abstractions leading to fast Cranelift/LLVM lowered instructions.
 6. **Human Readability:** It is the *least* prioritized factor if it conflicts with any of the above. We will not sacrifice verifiability or AI reliability to make the language "look like Python."
 
-## 3. Disallowed Anti-Patterns (V0.1 and Beyond)
+## 3. Disallowed Anti-Patterns (V0.3+ and Beyond)
 - **Prompt Compilers:** We are not building a parser that takes free-text "make a server" and dynamically compiles it.
 - **Natural Language Parsing:** Language syntax must be strict and tokenizable, not fuzzy text processing.
-- **LLM Runtimes in V0.1:** Do not inject LLM inference engines into the generated binaries. V0.1 produces pure, deterministic, and isolated Linux ELF executables.
+- **LLM Runtimes:** Do not inject LLM inference engines into generated binaries. Demir produces pure, deterministic, and isolated Linux ELF executables.
+
+## 4. Current Groundwork (what exists today)
+Only the lexer recognizes AI-oriented keywords (`intent`, `agent`, `capability`, `ask`). They parse into tokens but do **not** yet participate in semantic analysis, IR lowering, or code generation. This lexical footprint is deliberately small so it does not compromise the deterministic, procedural core.

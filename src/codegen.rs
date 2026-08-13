@@ -75,7 +75,21 @@ impl JITCompiler {
             self.ctx.func.signature.returns.push(AbiParam::new(types::I64));
 
             let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.builder_context);
-            
+
+            // Borrow/pointer (stack-slot promotion): address-taken locals live in stack
+            // slots so that &x / &mut x can yield a stable address.
+            let addr_taken = collect_addr_taken(mir_func);
+            let mut slot_map: HashMap<LocalId, cranelift::codegen::ir::StackSlot> = HashMap::new();
+            for l in &addr_taken {
+                let slot = builder.create_sized_stack_slot(
+                    cranelift::prelude::StackSlotData::new(
+                        cranelift::prelude::StackSlotKind::ExplicitSlot,
+                        8,
+                    ),
+                );
+                slot_map.insert(*l, slot);
+            }
+
             let mut block_map = HashMap::new();
             for i in 0..mir_func.blocks.len() {
                 block_map.insert(BasicBlockId(i), builder.create_block());
@@ -102,6 +116,15 @@ impl JITCompiler {
                 let local_id = mir_func.locals[i].id.0;
                 let var = Variable::new(local_id);
                 builder.def_var(var, param_val);
+                // If this parameter is address-taken, spill its initial value into
+                // its stack slot so borrows observe it immediately.
+                let lid = mir_func.locals[i].id;
+                if addr_taken.contains(&lid) {
+                    if let Some(slot) = slot_map.get(&lid) {
+                        let ptr = builder.ins().stack_addr(types::I64, *slot, 0);
+                        builder.ins().store(cranelift::prelude::MemFlags::new(), param_val, ptr, 0);
+                    }
+                }
             }
 
             for (i, mir_block) in mir_func.blocks.iter().enumerate() {
@@ -115,15 +138,14 @@ impl JITCompiler {
                     match stmt {
                         Statement::Assign(dest, rval) => {
                             let dest_var = Variable::new(dest.0);
-                            match rval {
+                            let value = match rval {
                                 Rvalue::Use(op) => {
-                                    let val = compile_operand(&mut builder, op);
-                                    builder.def_var(dest_var, val);
+                                    compile_operand(&mut builder, op)
                                 }
                                 Rvalue::BinaryOp(op, left, right) => {
                                     let l = compile_operand(&mut builder, left);
                                     let r = compile_operand(&mut builder, right);
-                                    let res = match op.as_str() {
+                                    match op.as_str() {
                                         "+" => builder.ins().iadd(l, r),
                                         "-" => builder.ins().isub(l, r),
                                         "*" => builder.ins().imul(l, r),
@@ -145,26 +167,42 @@ impl JITCompiler {
                                             builder.ins().uextend(types::I64, cmp)
                                         },
                                         _ => builder.ins().iconst(types::I64, 0),
-                                    };
-                                    builder.def_var(dest_var, res);
+                                    }
                                 }
                                 Rvalue::StructAlloc(size) => {
                                     let slot = builder.create_sized_stack_slot(cranelift::prelude::StackSlotData::new(cranelift::prelude::StackSlotKind::ExplicitSlot, *size as u32));
-                                    let ptr = builder.ins().stack_addr(types::I64, slot, 0);
-                                    builder.def_var(dest_var, ptr);
+                                    builder.ins().stack_addr(types::I64, slot, 0)
                                 }
                                 Rvalue::FieldLoad(ptr_local, offset) => {
                                     let ptr_var = Variable::new(ptr_local.0);
                                     let ptr_val = builder.use_var(ptr_var);
-                                    let val = builder.ins().load(types::I64, cranelift::prelude::MemFlags::new(), ptr_val, *offset as i32);
-                                    builder.def_var(dest_var, val);
+                                    builder.ins().load(types::I64, cranelift::prelude::MemFlags::new(), ptr_val, *offset as i32)
                                 }
-                                Rvalue::AddressOf(_) | Rvalue::MutAddressOf(_) | Rvalue::Dereference(_) => {
-                                    // Borrow/pointer desteği henüz implemente edilmedi (stack-slot promotion
-                                    // gerekir). Kaba panik yerine anlamlı derleyici hatası.
-                                    return Err(format!(
-                                        "Compile error: borrow/pointer (AddressOf/Deref) not implemented yet"
-                                    ));
+                                Rvalue::AddressOf(l) | Rvalue::MutAddressOf(l) => {
+                                    // Stack-slot promotion: &x / &mut x -> address of x's stack slot
+                                    if let Some(slot) = slot_map.get(l) {
+                                        builder.ins().stack_addr(types::I64, *slot, 0)
+                                    } else {
+                                        return Err(format!(
+                                            "Compile error: borrow target local {} is not addressable (no stack slot)",
+                                            l.0
+                                        ));
+                                    }
+                                }
+                                Rvalue::Dereference(local) => {
+                                    // *ptr -> load I64 from address held by ptr
+                                    let ptr_var = Variable::new(local.0);
+                                    let ptr_val = builder.use_var(ptr_var);
+                                    builder.ins().load(types::I64, cranelift::prelude::MemFlags::new(), ptr_val, 0)
+                                }
+                            };
+                            builder.def_var(dest_var, value);
+                            // Addr-taken local: value must also be spilled to its stack slot
+                            // so that borrows of this local observe the written value.
+                            if addr_taken.contains(dest) {
+                                if let Some(slot) = slot_map.get(dest) {
+                                    let ptr = builder.ins().stack_addr(types::I64, *slot, 0);
+                                    builder.ins().store(cranelift::prelude::MemFlags::new(), value, ptr, 0);
                                 }
                             }
                         }
@@ -336,4 +374,20 @@ fn compile_operand(builder: &mut FunctionBuilder, op: &Operand) -> Value {
             builder.use_var(var)
         }
     }
+}
+
+/// Collects the set of locals that are taken by address (&x / &mut x). These
+/// locals must be promoted to stack slots so the borrow yields a stable address.
+fn collect_addr_taken(mir_func: &MirFunction) -> std::collections::HashSet<LocalId> {
+    let mut set = std::collections::HashSet::new();
+    for blk in &mir_func.blocks {
+        for stmt in &blk.statements {
+            if let Statement::Assign(_, Rvalue::AddressOf(l))
+                | Statement::Assign(_, Rvalue::MutAddressOf(l)) = stmt
+            {
+                set.insert(*l);
+            }
+        }
+    }
+    set
 }

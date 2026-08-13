@@ -1,6 +1,7 @@
 use crate::mir::*;
-use std::collections::HashSet;
+use crate::hir::Type;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub struct BorrowChecker {
     moved_locals: HashSet<LocalId>,
@@ -42,7 +43,8 @@ impl BorrowChecker {
                     Statement::Store(ptr, _, val) => {
                         self.check_operand(val)?;
                         if let Some(ptr_decl) = self.locals.get(ptr) {
-                            if !ptr_decl.is_mut && ptr.0 < 1000 {
+                            let is_mut_ref = matches!(ptr_decl.ty, Type::MutRef(_));
+                            if !ptr_decl.is_mut && !is_mut_ref && ptr.0 < 1000 {
                                 return Err(format!("Cannot mutate field of immutable variable {}", ptr.0));
                             }
                         }

@@ -219,6 +219,37 @@ impl Analyzer {
             Statement::Assignment { target, value } => {
                 let val_expr = self.analyze_expression(value);
                 
+                if let Expression::Dereference(inner) = target {
+                    // Deref-store: *ptr = value
+                    if let Expression::Identifier(name) = *inner {
+                        if let Some(symbol) = self.resolve(&name) {
+                            let sym_ty = symbol.ty.clone();
+                            let ptr_id = symbol.id;
+                            // Yalnızca mutable reference üzerinden yazılabilir.
+                            if let Type::MutRef(pointee) = &sym_ty {
+                                if *val_expr.ty() != **pointee && *val_expr.ty() != Type::Error {
+                                    self.report_error(format!(
+                                        "Type mismatch in deref-store: cannot assign {:?} to {:?}",
+                                        val_expr.ty(),
+                                        **pointee
+                                    ));
+                                }
+                                return HirStatement::DerefStore { ptr_id, value: val_expr };
+                            } else {
+                                self.report_error(format!(
+                                    "Cannot assign through `{}`: deref-store requires a mutable reference (`&mut`).",
+                                    name
+                                ));
+                            }
+                        } else {
+                            self.report_error(format!("Undefined variable: {}", name));
+                        }
+                    } else {
+                        self.report_error("Deref-store target must be an identifier".to_string());
+                    }
+                    return HirStatement::ExpressionStatement(val_expr);
+                }
+
                 if let Expression::Identifier(name) = target {
                     let mut found_id = None;
                     let mut is_mut = false;

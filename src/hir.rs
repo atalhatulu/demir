@@ -54,6 +54,10 @@ pub enum HirStatement {
         target_id: usize,
         value: HirExpression,
     },
+    DerefStore {
+        ptr_id: usize,
+        value: HirExpression,
+    },
     ExpressionStatement(HirExpression),
     IfStatement {
         condition: HirExpression,

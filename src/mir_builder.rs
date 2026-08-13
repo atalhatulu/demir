@@ -122,6 +122,12 @@ impl<'a> MirBuilder<'a> {
                 self.push_stmt(Statement::Assign(LocalId(target_id), rval));
                 Ok(())
             }
+            HirStatement::DerefStore { ptr_id, value } => {
+                // *ptr = val -> Store(ptr, offset 0, val)
+                let val_op = self.build_operand(value)?;
+                self.push_stmt(Statement::Store(LocalId(ptr_id), 0, val_op));
+                Ok(())
+            }
             HirStatement::ExpressionStatement(expr) => {
                 let _ = self.build_rvalue(expr)?;
                 Ok(())
